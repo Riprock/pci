@@ -1,0 +1,55 @@
+<head>
+  <style> body { margin: 0; } </style>
+  <meta http-equiv="refresh" content="60" >
+  <script src="https://unpkg.com/3d-force-graph"></script>
+  <script src="https://unpkg.com/neo4j-driver@1.7.6/lib/browser/neo4j-web.js"></script>
+  <!--<script src="../../dist/3d-force-graph.js"></script>-->
+</head>
+
+<body>
+  <div id="3d-graph"></div>
+
+  <script>
+    const elem = document.getElementById('3d-graph');
+    const driver = neo4j.v1.driver("bolt://localhost", neo4j.v1.auth.basic("neo4j", "password1"),{encrypted: false});
+	const session = driver.session();
+	const start = new Date()
+    session
+      .run('MATCH (n) WITH SUM(n.count) as somme ' +
+              'MATCH (n)-[r]->(m) ' +
+              'RETURN { id: id(n), label:head(labels(n)), caption:n.name, size:100.0*toFloat(n.count)/toFloat(somme), count:n.count, country:n.country, creation_date:n.creation_date, last_update:n.last_update, domain:n.domain } as source,' +
+              '{ id: id(m), label:head(labels(m)), caption:m.name, size:100.0*toFloat(m.count)/toFloat(somme), count:m.count, country:m.country, creation_date:m.creation_date, last_update:m.last_update, domain:m.domain} as target, ' +
+              '{ weight:count(r), type:type(r)} as rel')
+      .then(function (result) {
+                const nodes = {}
+        const links = result.records.map(r => {
+	       var source = r.get('source');source.id = source.id.toNumber();
+           nodes[source.id] = source;
+	       var target = r.get('target');target.id = target.id.toNumber();
+           nodes[target.id] = target;
+           var rel = r.get('rel');
+	       return Object.assign({source:source.id,target:target.id}, rel);
+	    });
+        session.close();
+        console.log(links.length+" links loaded in "+(new Date()-start)+" ms.")
+        const gData = { nodes: Object.values(nodes), links: links}
+        const Graph = ForceGraph3D()(elem)
+                      .graphData(gData)
+                      .nodeAutoColorBy('label')
+                      .nodeVal('size')
+                      .linkAutoColorBy('type')
+                      // .linkWidth(0)
+                      .linkDirectionalParticles('weight')
+                      .nodeLabel(node => `${node.label}: ${node.caption} <br />
+                                            requests: ${node.size}% (${node.count})<br />
+                                            country: ${node.country} - domain: ${node.domain}<br />
+                                            last_update: ${node.last_update} <br />
+                                            creation_date: ${node.creation_date}`)
+                      .onNodeHover(node => elem.style.cursor = node ? 'pointer' : null);
+      })
+      .catch(function (error) {
+        console.log(error);
+      });
+
+  </script>
+</body>
